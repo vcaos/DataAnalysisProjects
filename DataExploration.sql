@@ -1,123 +1,160 @@
-select *
-from PortfolioProject..CovidDeaths
-order by 3, 4;
 
--- We will select the data that will be used
--- Order by 1, 2 means the first and second column (location and date)
+-- This project explores real world covid-19 data through queries.
 
-Select location, date, total_cases, new_cases, total_deaths, population
-From PortfolioProject..CovidDeaths
-Order by 1, 2;
+-- This query allows us to view the covid deaths data according to the location alphabetically starting from the earliest date
+select location, date, population, total_cases, new_cases, total_deaths
+from portfolioproject..coviddeaths
+order by location, date;
 
--- Total Cases vs Total Deaths (Percentage) in the United States
--- This shows the likelihood of experiencing death if a person contracts covid in your country (United States in particular)
--- We can see that the number of cases increased significantly (reaching over 32 million by April 30)
--- in which the percentage of deaths reached its peak of ~6.26% in May, and gradually decreasing over time
--- percentage of deaths caused by covid
-Select location, date, total_cases, total_deaths, (total_deaths / total_cases) * 100 as deaths_percentage
-From PortfolioProject..CovidDeaths
-Where location = 'United States'
-Order by 1, 2;
+-- Some information we are able to see immediately: The first death occurred about one month after its first case in Afghanistan.
+-- Observe if this is consistent with other countries. 
 
 
--- Total Cases vs Population
--- This shows what percent of the population contracted covid by date
-Select location, date, total_cases, population, (total_cases / population) * 100 as cases_percentage
-From PortfolioProject..CovidDeaths
-Where location = 'United States'
-Order by 1, 2;
+-- Looking at total cases vs. total deaths
+-- This query takes the total_deaths and divides it by the total_cases and returns the likelihood of dying from covid. 
+-- For example, there was 1 death and 34 total cases in Afghanistan on 03/22/2020, which is a 2.94% death rate. 
+-- However, the next day there was still only 1 total death and 41 total cases, which produce a new death rate of 2.43%. 
+-- This is due to the low number of cases and deaths as the pandemic had only begun. 
+-- The last entry for Afghanistan states there were 2625 total deaths and 59745 total cases, which is a 4.39% death rate.
+select location, date, total_cases, total_deaths, (total_deaths / total_cases) * 100 as deaths_per_case
+from portfolioproject..coviddeaths
+order by location, date;
 
 
--- Countries with highest infection rates compared to population
-Select location, population, max(total_cases) as max_num_cases, max((total_cases / population)) * 100 as max_infected_percentage
-From PortfolioProject..CovidDeaths
-Group by location, population
-Order by max_infected_percentage desc;
+-- Let's observe the data in the United States
+-- The last entry on 12/29/2020 reveals 344822 deaths from 19630012 cases, with a percent of 1.76%.
+select location, date, total_cases, total_deaths, (total_deaths / total_cases) * 100 as death_by_covid
+from portfolioproject..coviddeaths
+where location = 'United States'
+order by location, date;
+
+-- Looking at total cases vs. population 
+-- This query shows what percentage of the US population contracted covid
+select location, date, total_cases, population, (total_cases / population) * 100 as infection_rate
+from portfolioproject..coviddeaths
+where location = 'United States'
+order by location, date;
+
+-- Looking at countries with the highest infection rate compared to population
+-- We can see that Andorra has the highest infection rate of 17.1%, whereas the US's highest infection rate
+-- was 9.77%. However, the US has a higher number of cases, but in relation to its population, the US's highest infection rate
+-- is lower. 
+select location, population, max(total_cases) as max_cases, max(total_cases / population) * 100 as highest_infection_rate
+from portfolioproject..coviddeaths
+group by location, population
+order by highest_infection_rate desc;
 
 
--- Countries with the highest number of deaths per population
-Select location, max(cast(total_deaths as int)) as max_deaths
-from PortfolioProject..CovidDeaths
+-- Looking at countries with the highest deaths per population
+-- order by total_deaths (before cast) does not order it numerically due to its data type as a varchar
+-- and so we need to cast / change it to an integer
+
+-- We also have an issue where some countries are listed as continents or 'World', and so some continents
+-- are null
+select location, population, max(cast(total_deaths as int)) as max_deaths, max(cast(total_deaths as int) / population) * 100 as highest_death_rate
+from portfolioproject..coviddeaths
 where continent is not null
-Group by location
+group by location, population
+order by highest_death_rate desc;
+
+
+-- Breaking things down by continent
+-- One issue with this data set is that filtering the data by a not null continent does not
+-- accurately sum all of the values for each continent
+-- However, filtering by null continent and grouping by continent fixes thsi
+
+-- This query only includes the US deaths in North America
+select continent, max(cast(total_deaths as int)) as max_deaths
+from portfolioproject..coviddeaths
+where continent is not null
+group by continent
 order by max_deaths desc;
 
--- Continents with the highest number of deaths per population
-Select location, max(cast(total_deaths as int)) as max_deaths
-from PortfolioProject..CovidDeaths
+-- This query includes other countries in NA
+select location, max(cast(total_deaths as int)) as max_deaths
+from portfolioproject..coviddeaths
 where continent is null
-Group by location
+group by location
 order by max_deaths desc;
 
--- GLOBAL NUMBERS
--- does NOT include location or continents
--- change data type of new_deaths nvarchar to an int
-Select date, sum(new_cases) as cases, sum(cast(new_deaths as int)) as deaths, (sum(cast(new_deaths as int)) / sum(new_cases)) * 100 as percentage  --, (total_deaths / total_cases) * 100 as deaths_percentage
-From PortfolioProject..CovidDeaths
+
+-- Global Numbers (no continent, location)
+
+select date, sum(new_cases) as cases, sum(cast(new_deaths as int)) as deaths,
+	(sum(cast(new_deaths as int)) / sum(new_cases)) * 100 as death_rate
+from portfolioproject..coviddeaths
 where continent is not null
 group by date
 order by 1, 2;
 
+-- Across the world, the percentage of deaths from covid is 2.11% with over 3 million deaths from over 
+-- 150 million cases.
+select sum(new_cases) as cases, sum(cast(new_deaths as int)) as deaths,
+	(sum(cast(new_deaths as int)) / sum(new_cases)) * 100 as death_rate
+from portfolioproject..coviddeaths
+where continent is not null
+order by 1, 2;
 
--- Total Population vs Vaccinations
-select deaths.continent, deaths.location, deaths.date, deaths.population, vaccinations.new_vaccinations
-from PortfolioProject..CovidDeaths deaths JOIN PortfolioProject..CovidVaccinations vaccinations
-	ON deaths.location = vaccinations.location AND deaths.date = vaccinations.date
-where deaths.continent is not null
+
+-- Looking at deaths and vaccinations
+select d.continent, d.location, d.date, d.population, v.new_vaccinations
+from portfolioproject..coviddeaths d 
+	join portfolioproject..covidvaccinations v
+		on d.location = v.location and d.date = v.date
+where d.continent is not null
 order by 1, 2, 3;
 
+-- Include a rolling count of vaccinations using partition by location
+-- Want the count to start over for each new location
+select d.continent, d.location, d.date, d.population, v.new_vaccinations,
+	sum(cast(v.new_vaccinations as int)) over (partition by d.location order by d.location, d.date) as rolling_count
+from portfolioproject..coviddeaths d 
+	join portfolioproject..covidvaccinations v
+		on d.location = v.location and d.date = v.date
+where d.continent is not null
+order by 1, 2, 3;
 
--- Show a rolling count of new vaccinations by location
--- Convert (or cast) new vaccinations as an int
-select deaths.continent, deaths.location, deaths.date, deaths.population, vaccinations.new_vaccinations,
-	sum(convert(int, vaccinations.new_vaccinations)) over (partition by deaths.location order by deaths.location, deaths.date) as rolling_count
-from PortfolioProject..CovidDeaths deaths JOIN PortfolioProject..CovidVaccinations vaccinations
-	ON deaths.location = vaccinations.location AND deaths.date = vaccinations.date
-where deaths.continent is not null
-order by 2, 3;
-
--- CTE
-With PopvsVac (continent, location, date, population, new_vaccinations, rolling_count)
-as
-(
-select deaths.continent, deaths.location, deaths.date, deaths.population, vaccinations.new_vaccinations,
-	sum(convert(int, vaccinations.new_vaccinations)) over (partition by deaths.location order by deaths.location, deaths.date) as rolling_count
-from PortfolioProject..CovidDeaths deaths JOIN PortfolioProject..CovidVaccinations vaccinations
-	ON deaths.location = vaccinations.location AND deaths.date = vaccinations.date
-where deaths.continent is not null
+-- using a CTE to find out what percent of the population is vaccinated for each location per day
+with population_vaccinated (continent, location, date, population, new_vaccinations, rolling_count)
+as (
+select d.continent, d.location, d.date, d.population, v.new_vaccinations,
+	sum(cast(v.new_vaccinations as int)) over (partition by d.location order by d.location, d.date) as rolling_count
+from portfolioproject..coviddeaths d 
+	join portfolioproject..covidvaccinations v
+		on d.location = v.location and d.date = v.date
+where d.continent is not null
 )
-Select *, (rolling_count / population) * 100
-From PopvsVac;
+select *, (rolling_count / population) * 100 as vaccination_rate
+from population_vaccinated
+order by 1, 2, 3;
 
--- using a temp table
-drop table if exists #PercentPopVaccinated --good to include in case of making changes
-create table #PercentPopVaccinated (
-Continent nvarchar(255),
-Location nvarchar(255),
-Date datetime,
-Population numeric,
-New_vaccinations numeric,
+-- using a temp table instead
+drop table if exists #population_vaccinated
+create table #population_vaccinated (
+continent nvarchar(255),
+location nvarchar(255),
+date datetime,
+population numeric,
+new_vaccinations numeric,
 rolling_count numeric)
 
-Insert into #PercentPopVaccinated
-select deaths.continent, deaths.location, deaths.date, deaths.population, vaccinations.new_vaccinations,
-	sum(convert(int, vaccinations.new_vaccinations)) over (partition by deaths.location order by deaths.location, deaths.date) as rolling_count
-from PortfolioProject..CovidDeaths deaths JOIN PortfolioProject..CovidVaccinations vaccinations
-	ON deaths.location = vaccinations.location AND deaths.date = vaccinations.date
-where deaths.continent is not null
+insert into #population_vaccinated
+select d.continent, d.location, d.date, d.population, v.new_vaccinations,
+	sum(cast(v.new_vaccinations as int)) over (partition by d.location order by d.location, d.date) as rolling_count
+from portfolioproject..coviddeaths d 
+	join portfolioproject..covidvaccinations v
+		on d.location = v.location and d.date = v.date
+where d.continent is not null;
 
-Select *, (rolling_count / population) * 100
-From #PercentPopVaccinated;
+select *, (rolling_count / population) * 100 as vaccination_rate
+from #population_vaccinated
+order by 1, 2, 3;
 
--- Create view to store data
-create view PercentPopVaccinated as
-select deaths.continent, deaths.location, deaths.date, deaths.population, vaccinations.new_vaccinations,
-	sum(convert(int, vaccinations.new_vaccinations)) over (partition by deaths.location order by deaths.location, deaths.date) as rolling_count
-from PortfolioProject..CovidDeaths deaths JOIN PortfolioProject..CovidVaccinations vaccinations
-	ON deaths.location = vaccinations.location AND deaths.date = vaccinations.date
-where deaths.continent is not null;
-
-
-Select *, (rolling_count / population) * 100 as percentage
-from PercentPopVaccinated
-order by location;
+-- creating a view to store data
+create view percent_population_vaccinated as
+select d.continent, d.location, d.date, d.population, v.new_vaccinations,
+	sum(cast(v.new_vaccinations as int)) over (partition by d.location order by d.location, d.date) as rolling_count
+from portfolioproject..coviddeaths d 
+	join portfolioproject..covidvaccinations v
+		on d.location = v.location and d.date = v.date
+where d.continent is not null;
