@@ -1,186 +1,161 @@
+-- This project focuses on standarding the data to make it more readable and user-friendly.
 
--- I will be cleaning the data in this excel file using SQL queries
+select * 
+from PortfolioProject..HousingData;
+
+
+-- Standardize the date format to remove the extraneous information (hours, minutes, seconds)
+
+-- What we want the date to look like
+select saledate, convert(date, saledate) as formatted_date
+from PortfolioProject..HousingData;
+
+-- We need to alter and update the table
+
+alter table PortfolioProject..HousingData
+add saledate_formatted date;
+
+update PortfolioProject..HousingData
+set saledate_formatted = convert(date, saledate);
+
+-- Now the dataset contains a new field that has the formatted date
+select saledate_formatted
+from PortfolioProject..HousingData;
+
+-- Populate Property Address data
+-- Some rows do not have a propertyaddress value, however, notice that there may be multiple entries
+-- with the same parcelID that do have the propertyaddress in that row
+-- With this in mind, we can populate the missing information by using the known information
+select parcelid, propertyaddress
+from PortfolioProject..HousingData
+order by parcelid;
+
+-- Use a self join to make comparisons and see which entries have a blank propertyaddress
+select a.parcelid, a.propertyaddress, b.parcelid, b.propertyaddress
+from PortfolioProject..HousingData a 
+	join PortfolioProject..HousingData b
+	on a.parcelid = b.parcelid 
+	and a.[UniqueID ] <> b.[UniqueID ] -- Looking at different entries
+where b.propertyaddress is NULL;
+
+-- ISNULL(what to check is null, if null what do we want to populate it with)
+select a.parcelid, a.propertyaddress, b.parcelid, b.propertyaddress, ISNULL(b.propertyaddress, a.propertyaddress)
+from PortfolioProject..HousingData a 
+	join PortfolioProject..HousingData b
+	on a.parcelid = b.parcelid 
+	and a.[UniqueID ] <> b.[UniqueID ] -- Looking at different entries
+where b.propertyaddress is NULL;
+
+-- Now we want to update the dataset
+update b
+set propertyaddress = isnull(b.propertyaddress, a.propertyaddress)
+from PortfolioProject..HousingData a 
+	join PortfolioProject..HousingData b
+	on a.parcelid = b.parcelid 
+	and a.[UniqueID ] <> b.[UniqueID ]
+where b.propertyaddress is NULL;
+
+-- No entries have a blank propertyaddress anymore
 select *
-from PortfolioProject..HousingDating;
+from PortfolioProject..HousingData
+where propertyaddress is null;
 
 
---------------
--- Standardizing the date format to remove the time
-select saledate, convert(date, saledate)
-from PortfolioProject..HousingDating;
+-- Split property address into 2 individual fields (street address, city)
+-- substring(field, position you are looking at, delimeter)
+-- charindex(what we are looking for to split, field) returns a number, 
+-- so if we do not want to include the delimeter, we subtract 1
+select substring(propertyaddress, 1, charindex(',', propertyaddress) - 1) as property_street_address,
+	substring(propertyaddress, charindex(',', propertyaddress) + 1, len(propertyaddress) - 1) as property_city
+from PortfolioProject..HousingData;
 
-/* This query did not update the table, so we will use another command ALTER TABLE
-update HousingDating
-set saledate = convert(date, saledate);
-*/
+alter table PortfolioProject..HousingData
+add property_street_address nvarchar(255);
 
-alter table HousingDating
-add saleDateFixed date;
+alter table PortfolioProject..HousingData
+add property_city nvarchar(255);
 
-update HousingDating
-set saleDateFixed = convert(date, saledate);
+update PortfolioProject..HousingData
+set property_street_address = substring(propertyaddress, 1, charindex(',', propertyaddress) - 1);
 
-select saleDateFixed
-from PortfolioProject..HousingDating;
-
-/* remove the original saleDate column so that we are left with saleDateFixed */
-
-
----------------
-
-/* Populate ("fill in missing data") property address data
-
-Notice that the same parcleID will have the same PropertyAddress,
-so if the PropertyAddress is missing, we can fill it in with what is already known for a parcelID
-
-Join the table to itself so that we can compare rows that are missing using ISNULL
-*/
-select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress, ISNULL(a.PropertyAddress, b.PropertyAddress)
-from PortfolioProject..HousingDating a
-	join PortfolioProject..HousingDating b
-		on a.ParcelID = b.ParcelID and a.[UniqueID ] != b.[UniqueID ]
-where a.PropertyAddress is null;
-
-Update a
-set propertyaddress = ISNULL(a.PropertyAddress, b.PropertyAddress)
-from PortfolioProject..HousingDating a
-	join PortfolioProject..HousingDating b
-		on a.ParcelID = b.ParcelID and a.[UniqueID ] != b.[UniqueID ]
-where a.PropertyAddress is null;
+update PortfolioProject..HousingData
+set property_city = substring(propertyaddress, charindex(',', propertyaddress) + 1, len(propertyaddress) - 1);
 
 
----------------------
-/* Slicing address into individual columns (address, city, state)
+-- Split owner address into 3 fields: street, city, state
+-- PARSENAME looks for periods (we can replace it with the comma) and looks at the value backwards
+select parsename(replace(owneraddress, ',', '.'), 3) as owner_state,
+	parsename(replace(owneraddress, ',', '.'), 2) as owner_city,
+	parsename(replace(owneraddress, ',', '.'), 1) as owner_street_address
+from PortfolioProject..HousingData;
+
+alter table PortfolioProject..HousingData
+add owner_street_address nvarchar(255);
+
+alter table PortfolioProject..HousingData
+add owner_city nvarchar(255);
+
+alter table PortfolioProject..HousingData
+add owner_state nvarchar(255);
+
+update PortfolioProject..HousingData
+set owner_street_address = parsename(replace(owneraddress, ',', '.'), 3);
+
+update PortfolioProject..HousingData
+set owner_city = parsename(replace(owneraddress, ',', '.'), 2);
+
+update PortfolioProject..HousingData
+set owner_state = parsename(replace(owneraddress, ',', '.'), 1);
+
+select *
+from PortfolioProject..HousingData;
 
 
-*/
-select PropertyAddress
-from PortfolioProject..HousingDating;
+-- Change Y to Yes and N to No in "Sold as Vacant" field
+-- There are 4 values for this field: Y, Yes, N, No
+-- We want to make it only Yes and No
+select soldasvacant,
+	case
+		when soldasvacant = 'Y' then 'Yes'
+		when soldasvacant = 'N' then 'No'
+		else soldasvacant
+	end as formatted_soldasvacant
+from PortfolioProject..HousingData;
 
-/* substring(PropertyAddress, 1, CHARINDEX(' ,', PropertyAddress)) means looking at the first value in the property address
-until it reaches the comma, but we don't want to include the comma*/
-select 
-	substring(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) - 1) as address,
-	substring(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1 , LEN(PropertyAddress)) as city
-from PortfolioProject..HousingDating;
-
-alter table HousingDating
-add propAddressSplit nvarchar(255);
-
-update HousingDating
-set propAddressSplit = substring(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) - 1);
-
-alter table HousingDating
-add propCitySplit nvarchar(255);
-
-update HousingDating
-set propCitySplit = substring(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1 , LEN(PropertyAddress));
-
-select PropertyAddress, propAddressSplit, propCitySplit
-from PortfolioProject..HousingDating;
-
-/* OwnerAddress has address, city, AND state included 
-Instead of using substring, we will use PARSENAME by replacing periods with commas
-
-Note: parsename only looks for periods
-*/
-
-select 
-	parsename(replace(owneraddress, ',', '.'), 3) as adress,
-	parsename(replace(owneraddress, ',', '.'), 2) as city,
-	parsename(replace(owneraddress, ',', '.'), 1) as state
-from PortfolioProject..HousingDating;
-
-alter table HousingDating
-add ownerAddressSplit nvarchar(255);
-
-alter table HousingDating
-add ownerCitySplit nvarchar(255);
-
-alter table HousingDating
-add ownerStateSplit nvarchar(255);
-
-update HousingDating
-set ownerAddressSplit = parsename(replace(owneraddress, ',', '.'), 3);
-
-update HousingDating
-set ownerCitySplit = parsename(replace(owneraddress, ',', '.'), 2);
-
-update HousingDating
-set ownerStateSplit = parsename(replace(owneraddress, ',', '.'), 1);
-
-select ownerAddress, ownerAddressSplit, ownerCitySplit, ownerStateSplit
-from PortfolioProject..HousingDating;
-
-
---------------
-/*  Change Y and N to Yes and No in "Sold as Vacant" field
-
-We will first check to see the distinct entries in the field, and use a case statement to change it
-
-*/
-
-select distinct(SoldAsVacant), count(SoldAsVacant)
-from PortfolioProject..HousingDating
-group by SoldAsVacant;
-
-select SoldAsVacant,
-	CASE
-		when SoldAsVacant = 'Y' then 'Yes'
-		when SoldAsVacant = 'N' then 'No'
-		else SoldAsVacant
-	END
-from PortfolioProject..HousingDating;
-
-update HousingDating
-set SoldAsVacant = 
-	CASE
-		when SoldAsVacant = 'Y' then 'Yes'
-		when SoldAsVacant = 'N' then 'No'
-		else SoldAsVacant
-	END;
-
-
---------------
-/* Remove duplicate entries
-NOTE: not typically done
-
-*/
-
---CTE
+update PortfolioProject..HousingData
+set soldasvacant = case
+		when soldasvacant = 'Y' then 'Yes'
+		when soldasvacant = 'N' then 'No'
+		else soldasvacant
+	end;
+		
+-- Remove duplicate values using row number and a cte
+-- This outputs the entries that are duplicates
+-- Our goal is to delete these entries
 with rowNumCTE as (
-Select *,
-	ROW_NUMBER() over (
-	partition by ParcelID,
-			PropertyAddress,
-			SalePrice,
-			SaleDate,
-			LegalReference
-			order by UniqueID) row_num
-from PortfolioProject..HousingDating
+select *, 
+	row_number() over (partition by parcelid, 
+									propertyaddress, 
+									saleprice,
+									saledate,
+									legalreference
+									order by uniqueid) row_num
+from PortfolioProject..HousingData
 )
-DELETE
+delete
 from rowNumCTE
 where row_num > 1;
 
-with rowNumCTE as (
-Select *,
-	ROW_NUMBER() over (
-	partition by ParcelID,
-			PropertyAddress,
-			SalePrice,
-			SaleDate,
-			LegalReference
-			order by UniqueID) row_num
-from PortfolioProject..HousingDating
-)
+
+-- delete unused columns (not very often, never do it to the raw data)
+-- now that we split the addresses, let's delete the original address
+-- and the saledate that we reformatted
+
+alter table PortfolioProject..HousingData
+drop column propertyaddress, owneraddress;
+
+alter table PortfolioProject..HousingData
+drop column saledate;
+
 select *
-from rowNumCTE
-where row_num > 1
-order by PropertyAddress;
-
-
-/* Deleting unused columns, do not do to raw data */
-
-ALTER TABLE PortfolioProject..HousingDating
-DROP COLUMN ownerAddress, PropertyAddress;
+from PortfolioProject..HousingData;
